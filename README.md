@@ -1,4 +1,4 @@
-# Computer Graphics - Exercise 5 - WebGL Basketball Court
+# Computer Graphics - WebGL Basketball Court
 
 ## Getting Started
 1. Clone this repository to your local machine
