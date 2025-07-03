@@ -11,7 +11,6 @@
 `basketball_exercise_instructions.html`
 
 ## Group Members
-**MANDATORY: Add the full names of all group members here:**
 - Itay Bar Or 808711
 
 ## Technical Details
