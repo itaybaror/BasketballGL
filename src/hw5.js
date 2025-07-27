@@ -16,6 +16,8 @@ dir.position.set(10, 20, 15)
 dir.castShadow = true
 scene.add(dir)
 
+const backboards = []
+
 // ────────── court floor ──────────
 function createCourtFloor() {
   const g = new THREE.BoxGeometry(30, 0.2, 15)
@@ -76,6 +78,7 @@ function createHoop(sign) {
   board.rotation.y = -Math.PI / 2 * sign
   board.castShadow = true
   root.add(board)
+  backboards.push(board)
 
   const rim = new THREE.Mesh(
     new THREE.TorusGeometry(0.3, 0.05, 16, 32),
@@ -166,7 +169,9 @@ function createBasketball() {
   scene.add(ballGroup)
 }
 
-// ────────── build whole court ──────────
+// ────────── build whole court ─────────
+let lastBackboardHitTime = 0
+const backboardCooldown = 0.1 // 100ms between bounces
 function createBasketballCourt() {
   createCourtFloor()
   createCourtLines()
@@ -194,8 +199,59 @@ let ballScoredThisShot = false
 let shotResultShown = false
 let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false }
 let prevTime = performance.now()
+let backboardRecentlyHit = false
 
 createBasketballCourt()
+
+function checkBackboardCollision() {
+  for (const board of backboards) {
+    board.updateMatrixWorld(true)
+
+    const boardPos = new THREE.Vector3().setFromMatrixPosition(board.matrixWorld)
+    const boardQuat = board.getWorldQuaternion(new THREE.Quaternion())
+
+    // We'll treat the backboard as a thin box: 2 units wide, 1.5 units tall, and 0.05 deep
+    const halfSize = new THREE.Vector3(1.0, 0.75, 0.025)
+
+    // Transform ball position into board's local space
+    const invQuat = boardQuat.clone().invert()
+    const localBallPos = ballGroup.position.clone().sub(boardPos).applyQuaternion(invQuat)
+
+    // Clamp localBallPos to box extents to find closest point on box
+    const clamped = localBallPos.clone().clamp(
+      halfSize.clone().negate(),
+      halfSize
+    )
+
+    // Compute distance from ball to closest point on box
+    const closestPoint = clamped
+    const distVec = localBallPos.clone().sub(closestPoint)
+    const distSq = distVec.lengthSq()
+
+    if (distSq < ballRadius * ballRadius) {
+      // COLLISION DETECTED
+
+      // Get normal in local space
+      const normalLocal = distVec.lengthSq() === 0
+        ? new THREE.Vector3(1, 0, 0) // arbitrary normal if inside box center
+        : distVec.clone().normalize()
+
+      // Transform normal back to world space
+      const normalWorld = normalLocal.applyQuaternion(boardQuat).normalize()
+
+      // Reflect velocity
+      const vDotN = ballVelocity.dot(normalWorld)
+      if (vDotN < 0) {
+        ballVelocity.addScaledVector(normalWorld, -2 * vDotN)
+        ballVelocity.multiplyScalar(0.85)
+      }
+
+      // Push out of collision
+      const penetration = ballRadius - Math.sqrt(distSq)
+      ballGroup.position.addScaledVector(normalWorld, penetration + 0.001)
+    }
+  }
+}
 
 // ────────── camera / controls ──────────
 camera.position.set(0, 15, 30)
@@ -381,6 +437,7 @@ function animate() {
   if (deltaTime > 0.1) deltaTime = 0.1  // clamp to avoid big jumps
 
   if (ballShot) {
+    checkBackboardCollision()
     // Physics update for a shot in progress
     const prevY = ballGroup.position.y
     // Apply gravity to vertical velocity
